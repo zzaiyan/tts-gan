@@ -12,7 +12,7 @@ from torchsummary import summary
 
 
 class Generator(nn.Module):
-    def __init__(self, seq_len=150, patch_size=15, channels=3, num_classes=9, latent_dim=100, embed_dim=10, depth=3,
+    def __init__(self, seq_len=64, patch_size=16, channels=11, num_classes=9, latent_dim=100, embed_dim=10, depth=3,
                  num_heads=5, forward_drop_rate=0.5, attn_drop_rate=0.5):
         super(Generator, self).__init__()
         self.channels = channels
@@ -23,15 +23,15 @@ class Generator(nn.Module):
         self.depth = depth
         self.attn_drop_rate = attn_drop_rate
         self.forward_drop_rate = forward_drop_rate
-        
+
         self.l1 = nn.Linear(self.latent_dim, self.seq_len * self.embed_dim)
         self.pos_embed = nn.Parameter(torch.zeros(1, self.seq_len, self.embed_dim))
         self.blocks = Gen_TransformerEncoder(
-                         depth=self.depth,
-                         emb_size = self.embed_dim,
-                         drop_p = self.attn_drop_rate,
-                         forward_drop_p=self.forward_drop_rate
-                        )
+            depth=self.depth,
+            emb_size=self.embed_dim,
+            drop_p=self.attn_drop_rate,
+            forward_drop_p=self.forward_drop_rate
+        )
 
         self.deconv = nn.Sequential(
             nn.Conv2d(self.embed_dim, self.channels, 1, 1, 0)
@@ -46,8 +46,8 @@ class Generator(nn.Module):
         output = self.deconv(x.permute(0, 3, 1, 2))
         output = output.view(-1, self.channels, H, W)
         return output
-    
-    
+
+
 class Gen_TransformerEncoderBlock(nn.Sequential):
     def __init__(self,
                  emb_size,
@@ -69,12 +69,12 @@ class Gen_TransformerEncoderBlock(nn.Sequential):
             )
             ))
 
-        
+
 class Gen_TransformerEncoder(nn.Sequential):
     def __init__(self, depth=8, **kwargs):
-        super().__init__(*[Gen_TransformerEncoderBlock(**kwargs) for _ in range(depth)])       
-        
-        
+        super().__init__(*[Gen_TransformerEncoderBlock(**kwargs) for _ in range(depth)])
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, emb_size, num_heads, dropout):
         super().__init__()
@@ -103,7 +103,7 @@ class MultiHeadAttention(nn.Module):
         out = self.projection(out)
         return out
 
-    
+
 class ResidualAdd(nn.Module):
     def __init__(self, fn):
         super().__init__()
@@ -114,8 +114,8 @@ class ResidualAdd(nn.Module):
         x = self.fn(x, **kwargs)
         x += res
         return x
-    
-    
+
+
 class FeedForwardBlock(nn.Sequential):
     def __init__(self, emb_size, expansion, drop_p):
         super().__init__(
@@ -125,8 +125,7 @@ class FeedForwardBlock(nn.Sequential):
             nn.Linear(expansion * emb_size, emb_size),
         )
 
-        
-        
+
 class Dis_TransformerEncoderBlock(nn.Sequential):
     def __init__(self,
                  emb_size=100,
@@ -152,8 +151,8 @@ class Dis_TransformerEncoderBlock(nn.Sequential):
 class Dis_TransformerEncoder(nn.Sequential):
     def __init__(self, depth=8, **kwargs):
         super().__init__(*[Dis_TransformerEncoderBlock(**kwargs) for _ in range(depth)])
-        
-        
+
+
 class ClassificationHead(nn.Sequential):
     def __init__(self, emb_size=100, n_classes=2):
         super().__init__()
@@ -167,16 +166,16 @@ class ClassificationHead(nn.Sequential):
         out = self.clshead(x)
         return out
 
-    
+
 class PatchEmbedding_Linear(nn.Module):
-    #what are the proper parameters set here?
-    def __init__(self, in_channels = 21, patch_size = 16, emb_size = 100, seq_length = 1024):
+    # what are the proper parameters set here?
+    def __init__(self, in_channels=21, patch_size=16, emb_size=100, seq_length=1024):
         # self.patch_size = patch_size
         super().__init__()
-        #change the conv2d parameters here
+        # change the conv2d parameters here
         self.projection = nn.Sequential(
-            Rearrange('b c (h s1) (w s2) -> b (h w) (s1 s2 c)',s1 = 1, s2 = patch_size),
-            nn.Linear(patch_size*in_channels, emb_size)
+            Rearrange('b c (h s1) (w s2) -> b (h w) (s1 s2 c)', s1=1, s2=patch_size),
+            nn.Linear(patch_size * in_channels, emb_size)
         )
         self.cls_token = nn.Parameter(torch.randn(1, 1, emb_size))
         self.positions = nn.Parameter(torch.randn((seq_length // patch_size) + 1, emb_size))
@@ -185,25 +184,24 @@ class PatchEmbedding_Linear(nn.Module):
         b, _, _, _ = x.shape
         x = self.projection(x)
         cls_tokens = repeat(self.cls_token, '() n e -> b n e', b=b)
-        #prepend the cls token to the input
+        # prepend the cls token to the input
         x = torch.cat([cls_tokens, x], dim=1)
         # position
         x += self.positions
-        return x        
-        
-        
+        return x
+
+
 class Discriminator(nn.Sequential):
-    def __init__(self, 
-                 in_channels=3,
-                 patch_size=15,
-                 emb_size=50, 
-                 seq_length = 150,
-                 depth=3, 
-                 n_classes=1, 
+    def __init__(self,
+                 in_channels=11,
+                 patch_size=16,
+                 emb_size=50,
+                 seq_length=64,
+                 depth=3,
+                 n_classes=1,
                  **kwargs):
         super().__init__(
             PatchEmbedding_Linear(in_channels, patch_size, emb_size, seq_length),
             Dis_TransformerEncoder(depth, emb_size=emb_size, drop_p=0.5, forward_drop_p=0.5, **kwargs),
             ClassificationHead(emb_size, n_classes)
         )
-        

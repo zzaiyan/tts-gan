@@ -1,3 +1,14 @@
+
+# README of Fork Version
+
+---
+
+On the basis of the implementation of the original paper, I switched the data to temporal remote sensing data (about Shenzhen City), and wrote data sets, model training and Data and information visualization modules for it. In addition, I also provided pre trained models for reference.
+
+**The following section is the Readme provided by the original author.**
+
+---
+
 # TTS-GAN: A Transformer-based Time-Series Generative Adversarial Network
 ---
 

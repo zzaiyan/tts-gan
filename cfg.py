@@ -19,7 +19,7 @@ def str2bool(v):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--world-size', default=-1, type=int,
-                    help='number of nodes for distributed training')
+                        help='number of nodes for distributed training')
     parser.add_argument('--rank', default=-1, type=int,
                         help='node rank for distributed training')
     parser.add_argument('--loca_rank', default=-1, type=int,
@@ -33,10 +33,10 @@ def parse_args():
     parser.add_argument('--gpu', default=None, type=int,
                         help='GPU id to use.')
     parser.add_argument('--multiprocessing-distributed', action='store_true',
-                    help='Use multi-processing distributed training to launch '
-                         'N processes per node, which has N GPUs. This is the '
-                         'fastest way to use PyTorch for either single node or '
-                         'multi node data parallel training')
+                        help='Use multi-processing distributed training to launch '
+                        'N processes per node, which has N GPUs. This is the '
+                        'fastest way to use PyTorch for either single node or '
+                        'multi node data parallel training')
     parser.add_argument(
         '--max_epoch',
         type=int,
@@ -222,7 +222,7 @@ def parse_args():
     parser.add_argument('--num_candidate', type=int, default=10,
                         help='number of candidate architectures to be sampled')
     parser.add_argument('--topk', type=int, default=5,
-                        help='preserve topk models architectures after each stage' )
+                        help='preserve topk models architectures after each stage')
     parser.add_argument('--entropy_coeff', type=float, default=1e-3,
                         help='to encourage the exploration')
     parser.add_argument('--dynamic_reset_threshold', type=float, default=1e-3,
@@ -279,10 +279,10 @@ def parse_args():
                         help='ema warm up')
     parser.add_argument('--ema_kimg', type=int, default=500,
                         help='ema thousand images')
-    parser.add_argument('--latent_norm',action='store_true',
-        help='latent vector normalization')
-    parser.add_argument('--ministd',action='store_true',
-        help='mini batch std')
+    parser.add_argument('--latent_norm', action='store_true',
+                        help='latent vector normalization')
+    parser.add_argument('--ministd', action='store_true',
+                        help='mini batch std')
     parser.add_argument('--g_mlp', type=int, default=4,
                         help='generator mlp ratio')
     parser.add_argument('--d_mlp', type=int, default=4,
@@ -292,7 +292,7 @@ def parse_args():
     parser.add_argument('--d_window_size', type=int, default=8,
                         help='discriminator mlp ratio')
     parser.add_argument('--show', action='store_true',
-                    help='show')
+                        help='show')
 
     opt = parser.parse_args()
 

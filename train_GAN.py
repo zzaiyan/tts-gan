@@ -6,7 +6,8 @@ import cfg
 # import models_search
 # import datasets
 from dataLoader import *
-from GANModels import * 
+from ShenzhenDataset import *
+from GANModels import *
 from functions import train, train_d, validate, save_samples, LinearLrDecay, load_params, copy_params, cur_stages
 from utils.utils import set_log_dir, save_checkpoint, create_logger
 # from utils.inception_score import _init_inception
@@ -25,11 +26,12 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from copy import deepcopy
 from adamw import AdamW
-import random 
+import random
 import matplotlib.pyplot as plt
 import io
 import PIL.Image
 from torchvision.transforms import ToTensor
+
 
 # torch.backends.cudnn.enabled = True
 # torch.backends.cudnn.benchmark = True
@@ -37,11 +39,11 @@ from torchvision.transforms import ToTensor
 
 def main():
     args = cfg.parse_args()
-    
-#     _init_inception()
-#     inception_path = check_or_download_inception(None)
-#     create_inception_graph(inception_path)
-    
+
+    #     _init_inception()
+    #     inception_path = check_or_download_inception(None)
+    #     create_inception_graph(inception_path)
+
     if args.seed is not None:
         torch.manual_seed(args.random_seed)
         torch.cuda.manual_seed(args.random_seed)
@@ -67,14 +69,16 @@ def main():
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
+        mp.spawn(main_worker, nprocs=ngpus_per_node,
+                 args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
-        
+
+
 def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
-    
+
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
 
@@ -87,6 +91,7 @@ def main_worker(gpu, ngpus_per_node, args):
             args.rank = args.rank * ngpus_per_node + gpu
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
+
     # weight init
     def weights_init(m):
         classname = m.__class__.__name__
@@ -98,22 +103,23 @@ def main_worker(gpu, ngpus_per_node, args):
             elif args.init_type == 'xavier_uniform':
                 nn.init.xavier_uniform(m.weight.data, 1.)
             else:
-                raise NotImplementedError('{} unknown inital type'.format(args.init_type))
-#         elif classname.find('Linear') != -1:
-#             if args.init_type == 'normal':
-#                 nn.init.normal_(m.weight.data, 0.0, 0.02)
-#             elif args.init_type == 'orth':
-#                 nn.init.orthogonal_(m.weight.data)
-#             elif args.init_type == 'xavier_uniform':
-#                 nn.init.xavier_uniform(m.weight.data, 1.)
-#             else:
-#                 raise NotImplementedError('{} unknown inital type'.format(args.init_type))
+                raise NotImplementedError(
+                    '{} unknown inital type'.format(args.init_type))
+        #         elif classname.find('Linear') != -1:
+        #             if args.init_type == 'normal':
+        #                 nn.init.normal_(m.weight.data, 0.0, 0.02)
+        #             elif args.init_type == 'orth':
+        #                 nn.init.orthogonal_(m.weight.data)
+        #             elif args.init_type == 'xavier_uniform':
+        #                 nn.init.xavier_uniform(m.weight.data, 1.)
+        #             else:
+        #                 raise NotImplementedError('{} unknown inital type'.format(args.init_type))
         elif classname.find('BatchNorm2d') != -1:
             nn.init.normal_(m.weight.data, 1.0, 0.02)
             nn.init.constant_(m.bias.data, 0.0)
 
     # import network
-    
+
     gen_net = Generator()
     print(gen_net)
     dis_net = Discriminator()
@@ -126,8 +132,8 @@ def main_worker(gpu, ngpus_per_node, args):
         # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
             torch.cuda.set_device(args.gpu)
-#             gen_net = eval('models_search.'+args.gen_model+'.Generator')(args=args)
-#             dis_net = eval('models_search.'+args.dis_model+'.Discriminator')(args=args)
+            #             gen_net = eval('models_search.'+args.gen_model+'.Generator')(args=args)
+            #             dis_net = eval('models_search.'+args.dis_model+'.Discriminator')(args=args)
 
             gen_net.apply(weights_init)
             dis_net.apply(weights_init)
@@ -139,10 +145,13 @@ def main_worker(gpu, ngpus_per_node, args):
             args.dis_batch_size = int(args.dis_batch_size / ngpus_per_node)
             args.gen_batch_size = int(args.gen_batch_size / ngpus_per_node)
             args.batch_size = args.dis_batch_size
-            
-            args.num_workers = int((args.num_workers + ngpus_per_node - 1) / ngpus_per_node)
-            gen_net = torch.nn.parallel.DistributedDataParallel(gen_net, device_ids=[args.gpu], find_unused_parameters=True)
-            dis_net = torch.nn.parallel.DistributedDataParallel(dis_net, device_ids=[args.gpu], find_unused_parameters=True)
+
+            args.num_workers = int(
+                (args.num_workers + ngpus_per_node - 1) / ngpus_per_node)
+            gen_net = torch.nn.parallel.DistributedDataParallel(gen_net, device_ids=[args.gpu],
+                                                                find_unused_parameters=True)
+            dis_net = torch.nn.parallel.DistributedDataParallel(dis_net, device_ids=[args.gpu],
+                                                                find_unused_parameters=True)
         else:
             gen_net.cuda()
             dis_net.cuda()
@@ -158,58 +167,79 @@ def main_worker(gpu, ngpus_per_node, args):
         gen_net = torch.nn.DataParallel(gen_net).cuda()
         dis_net = torch.nn.DataParallel(dis_net).cuda()
     print(dis_net) if args.rank == 0 else 0
-        
 
     # set optimizer
     if args.optimizer == "adam":
         gen_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, gen_net.parameters()),
-                                        args.g_lr, (args.beta1, args.beta2))
+                                         args.g_lr, (args.beta1, args.beta2))
         dis_optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, dis_net.parameters()),
-                                        args.d_lr, (args.beta1, args.beta2))
+                                         args.d_lr, (args.beta1, args.beta2))
     elif args.optimizer == "adamw":
         gen_optimizer = AdamW(filter(lambda p: p.requires_grad, gen_net.parameters()),
-                                        args.g_lr, weight_decay=args.wd)
+                              args.g_lr, weight_decay=args.wd)
         dis_optimizer = AdamW(filter(lambda p: p.requires_grad, dis_net.parameters()),
-                                         args.g_lr, weight_decay=args.wd)
-        
-    gen_scheduler = LinearLrDecay(gen_optimizer, args.g_lr, 0.0, 0, args.max_iter * args.n_critic)
-    dis_scheduler = LinearLrDecay(dis_optimizer, args.d_lr, 0.0, 0, args.max_iter * args.n_critic)
+                              args.g_lr, weight_decay=args.wd)
 
-    # fid stat 
-#     if args.dataset.lower() == 'cifar10':
-#         fid_stat = 'fid_stat/fid_stats_cifar10_train.npz'
-#     elif args.dataset.lower() == 'stl10':
-#         fid_stat = 'fid_stat/stl10_train_unlabeled_fid_stats_48.npz'
-#     elif args.fid_stat is not None:
-#         fid_stat = args.fid_stat
-#     else:
-#         raise NotImplementedError(f'no fid stat for {args.dataset.lower()}')
-#     assert os.path.exists(fid_stat)
+    gen_scheduler = LinearLrDecay(
+        gen_optimizer, args.g_lr, 0.0, 0, args.max_iter * args.n_critic)
+    dis_scheduler = LinearLrDecay(
+        dis_optimizer, args.d_lr, 0.0, 0, args.max_iter * args.n_critic)
 
+    # fid stat
+    #     if args.dataset.lower() == 'cifar10':
+    #         fid_stat = 'fid_stat/fid_stats_cifar10_train.npz'
+    #     elif args.dataset.lower() == 'stl10':
+    #         fid_stat = 'fid_stat/stl10_train_unlabeled_fid_stats_48.npz'
+    #     elif args.fid_stat is not None:
+    #         fid_stat = args.fid_stat
+    #     else:
+    #         raise NotImplementedError(f'no fid stat for {args.dataset.lower()}')
+    #     assert os.path.exists(fid_stat)
 
     # epoch number for dis_net
     args.max_epoch = args.max_epoch * args.n_critic
-#     dataset = datasets.ImageDataset(args, cur_img_size=8)
-#     train_loader = dataset.train
-#     train_sampler = dataset.train_sampler
-    
-#     train_set = unimib_load_dataset(incl_xyz_accel = True, incl_rms_accel = False, incl_val_group = False, one_hot_encode = False, data_mode = 'Train')
-#     test_set = unimib_load_dataset(incl_xyz_accel = True, incl_rms_accel = False, incl_val_group = False, one_hot_encode = False, data_mode = 'Test')
-#     train_loader = data.DataLoader(train_set, batch_size=args.dis_batch_size, num_workers=args.num_workers, shuffle=True)
-#     test_loader = data.DataLoader(test_set, batch_size=args.dis_batch_size, num_workers=args.num_workers, shuffle=True)
-    
-    train_set = unimib_load_dataset(incl_xyz_accel = True, incl_rms_accel = False, incl_val_group = False, is_normalize = True, one_hot_encode = False, data_mode = 'Train', single_class = True, class_name = args.class_name, augment_times=args.augment_times)
-    train_loader = data.DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers, shuffle = True)
-    test_set = unimib_load_dataset(incl_xyz_accel = True, incl_rms_accel = False, incl_val_group = False, is_normalize = True, one_hot_encode = False, data_mode = 'Test', single_class = True, class_name = args.class_name)
-    test_loader = data.DataLoader(test_set, batch_size=args.batch_size, num_workers=args.num_workers, shuffle = True)
-    
+    #     dataset = datasets.ImageDataset(args, cur_img_size=8)
+    #     train_loader = dataset.train
+    #     train_sampler = dataset.train_sampler
+
+    #     train_set = unimib_load_dataset(incl_xyz_accel = True, incl_rms_accel = False, incl_val_group = False, one_hot_encode = False, data_mode = 'Train')
+    #     test_set = unimib_load_dataset(incl_xyz_accel = True, incl_rms_accel = False, incl_val_group = False, one_hot_encode = False, data_mode = 'Test')
+    #     train_loader = data.DataLoader(train_set, batch_size=args.dis_batch_size, num_workers=args.num_workers, shuffle=True)
+    #     test_loader = data.DataLoader(test_set, batch_size=args.dis_batch_size, num_workers=args.num_workers, shuffle=True)
+
+    if args.dataset == 'UniMiB':
+        train_set = unimib_load_dataset(incl_xyz_accel=True, incl_rms_accel=False, incl_val_group=False,
+                                        is_normalize=True, one_hot_encode=False, data_mode='Train', single_class=True,
+                                        class_name=args.class_name, augment_times=args.augment_times)
+        train_loader = data.DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers,
+                                       shuffle=True)
+        test_set = unimib_load_dataset(incl_xyz_accel=True, incl_rms_accel=False, incl_val_group=False,
+                                       is_normalize=True, one_hot_encode=False, data_mode='Test', single_class=True,
+                                       class_name=args.class_name)
+        test_loader = data.DataLoader(
+            test_set, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True)
+    elif args.dataset == 'Shenzhen':
+        use_data_size = 1000
+        train_set = shenzhen_dataset(
+            data_size=use_data_size, data_mode='Train', verbose=False)
+        train_loader = data.DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers,
+                                       shuffle=True)
+        test_set = shenzhen_dataset(
+            data_size=use_data_size, data_mode='Test', verbose=False)
+        test_loader = data.DataLoader(
+            test_set, batch_size=args.batch_size, num_workers=args.num_workers, shuffle=True)
+    else:
+        raise RuntimeError('Wrong Dataset Input!')
+
     print(len(train_loader))
-    
+
     if args.max_iter:
-        args.max_epoch = np.ceil(args.max_iter * args.n_critic / len(train_loader))
+        args.max_epoch = np.ceil(
+            args.max_iter * args.n_critic / len(train_loader))
 
     # initial
-    fixed_z = torch.cuda.FloatTensor(np.random.normal(0, 1, (100, args.latent_dim)))
+    fixed_z = torch.cuda.FloatTensor(
+        np.random.normal(0, 1, (100, args.latent_dim)))
     avg_gen_net = deepcopy(gen_net).cpu()
     gen_avg_param = copy_params(avg_gen_net)
     del avg_gen_net
@@ -227,35 +257,34 @@ def main_worker(gpu, ngpus_per_node, args):
         checkpoint = torch.load(checkpoint_file, map_location=loc)
         start_epoch = checkpoint['epoch']
         best_fid = checkpoint['best_fid']
-        
-        
+
         dis_net.load_state_dict(checkpoint['dis_state_dict'])
         gen_optimizer.load_state_dict(checkpoint['gen_optimizer'])
         dis_optimizer.load_state_dict(checkpoint['dis_optimizer'])
-        
-#         avg_gen_net = deepcopy(gen_net)
+
+        #         avg_gen_net = deepcopy(gen_net)
         gen_net.load_state_dict(checkpoint['avg_gen_state_dict'])
         gen_avg_param = copy_params(gen_net, mode='gpu')
         gen_net.load_state_dict(checkpoint['gen_state_dict'])
         fixed_z = checkpoint['fixed_z']
-#         del avg_gen_net
-#         gen_avg_param = list(p.cuda().to(f"cuda:{args.gpu}") for p in gen_avg_param)
-        
-        
+        #         del avg_gen_net
+        #         gen_avg_param = list(p.cuda().to(f"cuda:{args.gpu}") for p in gen_avg_param)
 
         args.path_helper = checkpoint['path_helper']
-        logger = create_logger(args.path_helper['log_path']) if args.rank == 0 else None
+        logger = create_logger(
+            args.path_helper['log_path']) if args.rank == 0 else None
         print(f'=> loaded checkpoint {checkpoint_file} (epoch {start_epoch})')
-        writer = SummaryWriter(args.path_helper['log_path']) if args.rank == 0 else None
+        writer = SummaryWriter(
+            args.path_helper['log_path']) if args.rank == 0 else None
         del checkpoint
     else:
-    # create new log dir
+        # create new log dir
         assert args.exp_name
         if args.rank == 0:
             args.path_helper = set_log_dir('logs', args.exp_name)
             logger = create_logger(args.path_helper['log_path'])
             writer = SummaryWriter(args.path_helper['log_path'])
-    
+
     if args.rank == 0:
         logger.info(args)
     writer_dict = {
@@ -266,58 +295,60 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # train loop
     for epoch in range(int(start_epoch), int(args.max_epoch)):
-#         train_sampler.set_epoch(epoch)
-        lr_schedulers = (gen_scheduler, dis_scheduler) if args.lr_decay else None
+        #         train_sampler.set_epoch(epoch)
+        lr_schedulers = (
+            gen_scheduler, dis_scheduler) if args.lr_decay else None
         cur_stage = cur_stages(epoch, args)
-        print("cur_stage " + str(cur_stage)) if args.rank==0 else 0
-        print(f"path: {args.path_helper['prefix']}") if args.rank==0 else 0
-        
-#         if (epoch+1) % 3 == 0:
-#             # train discriminator and generator both 
-#             train(args, gen_net, dis_net, gen_optimizer, dis_optimizer, gen_avg_param, train_loader, epoch, writer_dict,fixed_z, lr_schedulers)
-#         else:
-#             #only train discriminator 
-#             train_d(args, gen_net, dis_net, dis_optimizer, train_loader, epoch, writer_dict,fixed_z, lr_schedulers)
-        train(args, gen_net, dis_net, gen_optimizer, dis_optimizer, gen_avg_param, train_loader, epoch, writer_dict,fixed_z, lr_schedulers)
-        
+        print("cur_stage " + str(cur_stage)) if args.rank == 0 else 0
+        print(f"path: {args.path_helper['prefix']}") if args.rank == 0 else 0
+
+        #         if (epoch+1) % 3 == 0:
+        #             # train discriminator and generator both
+        #             train(args, gen_net, dis_net, gen_optimizer, dis_optimizer, gen_avg_param, train_loader, epoch, writer_dict,fixed_z, lr_schedulers)
+        #         else:
+        #             #only train discriminator
+        #             train_d(args, gen_net, dis_net, dis_optimizer, train_loader, epoch, writer_dict,fixed_z, lr_schedulers)
+        train(args, gen_net, dis_net, gen_optimizer, dis_optimizer, gen_avg_param, train_loader, epoch, writer_dict,
+              fixed_z, lr_schedulers)
+
         if args.rank == 0 and args.show:
             backup_param = copy_params(gen_net)
             load_params(gen_net, gen_avg_param, args, mode="cpu")
             save_samples(args, fixed_z, fid_stat, epoch, gen_net, writer_dict)
             load_params(gen_net, backup_param, args)
-            
-        #fid_stat is not defined  It doesn't make sense to use image evaluate matrics
-#         if epoch and epoch % args.val_freq == 0 or epoch == int(args.max_epoch)-1:
-#             backup_param = copy_params(gen_net)
-#             load_params(gen_net, gen_avg_param, args, mode="cpu")
-#             inception_score, fid_score = validate(args, fixed_z, fid_stat, epoch, gen_net, writer_dict)
-#             if args.rank==0:
-#                 logger.info(f'Inception score: {inception_score}, FID score: {fid_score} || @ epoch {epoch}.')
-#             load_params(gen_net, backup_param, args)
-#             if fid_score < best_fid:
-#                 best_fid = fid_score
-#                 is_best = True
-#             else:
-#                 is_best = False
-#         else:
-#             is_best = False
 
-#TO DO: Validate add synthetic data plot in tensorboard 
-        #Plot synthetic data every 5 epochs    
-#         if epoch and epoch % 1 == 0:
+        # fid_stat is not defined  It doesn't make sense to use image evaluate matrics
+        #         if epoch and epoch % args.val_freq == 0 or epoch == int(args.max_epoch)-1:
+        #             backup_param = copy_params(gen_net)
+        #             load_params(gen_net, gen_avg_param, args, mode="cpu")
+        #             inception_score, fid_score = validate(args, fixed_z, fid_stat, epoch, gen_net, writer_dict)
+        #             if args.rank==0:
+        #                 logger.info(f'Inception score: {inception_score}, FID score: {fid_score} || @ epoch {epoch}.')
+        #             load_params(gen_net, backup_param, args)
+        #             if fid_score < best_fid:
+        #                 best_fid = fid_score
+        #                 is_best = True
+        #             else:
+        #                 is_best = False
+        #         else:
+        #             is_best = False
+
+        # TO DO: Validate add synthetic data plot in tensorboard
+        # Plot synthetic data every 5 epochs
+        #         if epoch and epoch % 1 == 0:
         gen_net.eval()
         plot_buf = gen_plot(gen_net, epoch, args.class_name)
         image = PIL.Image.open(plot_buf)
         image = ToTensor()(image).unsqueeze(0)
-        #writer = SummaryWriter(comment='synthetic signals')
+        # writer = SummaryWriter(comment='synthetic signals')
         writer.add_image('Image', image[0], epoch)
-        
+
         is_best = False
         avg_gen_net = deepcopy(gen_net)
         load_params(avg_gen_net, gen_avg_param, args)
-#         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-#                 and args.rank == 0):
-# Add module in model saving code exp'gen_net.module.state_dict()' to solve the model loading unpaired name problem
+        #         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
+        #                 and args.rank == 0):
+        # Add module in model saving code exp'gen_net.module.state_dict()' to solve the model loading unpaired name problem
         save_checkpoint({
             'epoch': epoch + 1,
             'gen_model': args.gen_model,
@@ -332,27 +363,29 @@ def main_worker(gpu, ngpus_per_node, args):
             'fixed_z': fixed_z
         }, is_best, args.path_helper['ckpt_path'], filename="checkpoint")
         del avg_gen_net
-        
+
+
 def gen_plot(gen_net, epoch, class_name):
     """Create a pyplot plot and save to buffer."""
-    synthetic_data = [] 
+    synthetic_data = []
 
     for i in range(10):
         fake_noise = torch.FloatTensor(np.random.normal(0, 1, (1, 100)))
         fake_sigs = gen_net(fake_noise).to('cpu').detach().numpy()
         synthetic_data.append(fake_sigs)
 
-    fig, axs = plt.subplots(2, 5, figsize=(20,5))
+    fig, axs = plt.subplots(2, 5, figsize=(20, 5))
     fig.suptitle(f'Synthetic {class_name} at epoch {epoch}', fontsize=30)
     for i in range(2):
         for j in range(5):
-            axs[i, j].plot(synthetic_data[i*5+j][0][0][0][:])
-            axs[i, j].plot(synthetic_data[i*5+j][0][1][0][:])
-            axs[i, j].plot(synthetic_data[i*5+j][0][2][0][:])
+            axs[i, j].plot(synthetic_data[i * 5 + j][0][0][0][:])
+            axs[i, j].plot(synthetic_data[i * 5 + j][0][1][0][:])
+            axs[i, j].plot(synthetic_data[i * 5 + j][0][2][0][:])
     buf = io.BytesIO()
     plt.savefig(buf, format='jpeg')
     buf.seek(0)
     return buf
+
 
 if __name__ == '__main__':
     main()
